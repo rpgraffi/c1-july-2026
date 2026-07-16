@@ -12,4 +12,9 @@ export default defineConfig({
     // nitro/vite builds from this
     server: { entry: "server" },
   },
+  vite: {
+    // occt-import-js is a CJS emscripten module loaded inside a worker —
+    // prebundle it so the first drop doesn't trigger a dev-server reload.
+    optimizeDeps: { include: ["occt-import-js"] },
+  },
 });
