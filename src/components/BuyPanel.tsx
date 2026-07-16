@@ -94,8 +94,12 @@ export function BuyPanel({
       : `${model.stats.bodyCount} parts`;
 
   return (
-    <div className="flex h-full flex-col justify-center overflow-y-auto px-8 py-10 md:px-12 lg:px-16">
-      <AnimatePresence mode="wait">
+    // Scroll container: content centers when it fits, but stays fully
+    // reachable (with padding intact) when it's taller than the viewport.
+    // A bare `justify-center` + `overflow` would clip the top/bottom unscrollably.
+    <div className="h-full overflow-y-auto">
+      <div className="flex min-h-full flex-col justify-center px-8 py-12 md:px-12 lg:px-16">
+        <AnimatePresence mode="wait">
         {phase === "confirmed" ? (
           <motion.div
             key="confirmed"
@@ -201,9 +205,9 @@ export function BuyPanel({
                 />
                 <span className="text-sm text-zinc-400">/ unit</span>
               </div>
-              <div className="mt-2 flex items-center gap-2 text-xs">
+              <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-xs">
                 {quote.savings > 0.01 && (
-                  <span className="rounded-full bg-emerald-100 px-2.5 py-1 font-medium text-emerald-700">
+                  <span className="whitespace-nowrap rounded-full bg-emerald-100 px-2.5 py-1 font-medium text-emerald-700">
                     −{Math.round(quote.savings * 100)}% volume pricing
                   </span>
                 )}
@@ -212,7 +216,7 @@ export function BuyPanel({
             </motion.div>
 
             <motion.div variants={item} className="mt-8">
-              <div className="mb-3 flex items-baseline justify-between">
+              <div className="mb-3 flex items-center justify-between">
                 <div className="text-xs font-medium uppercase tracking-[0.14em] text-zinc-400">
                   Quantity · volume pricing
                 </div>
@@ -223,7 +227,7 @@ export function BuyPanel({
                   onChange={(e) =>
                     setQty(Math.max(1, Math.min(100_000, Number(e.target.value) || 1)))
                   }
-                  className="h-8 w-20 rounded-lg border border-zinc-200 bg-transparent text-center text-sm font-semibold tabular-nums text-zinc-900 outline-none focus:border-zinc-950"
+                  className="h-8 w-20 rounded-lg border border-zinc-200 bg-transparent text-center text-sm font-semibold tabular-nums text-zinc-900 outline-none focus:border-zinc-950 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                 />
               </div>
               <div className="relative">
@@ -234,8 +238,10 @@ export function BuyPanel({
                   max={100}
                   step={0.5}
                 />
-                {/* Staffelpreis stops on the track */}
-                <div className="pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2">
+                {/* Staffelpreis stops on the track. Inset by the thumb's 8px
+                    radius so the dots line up with the thumb's travel (Radix
+                    keeps the thumb fully inside the track at 0% and 100%). */}
+                <div className="pointer-events-none absolute inset-x-2 top-1/2 -translate-y-1/2">
                   {TIER_QTYS.map((tier) => (
                     <span
                       key={tier}
@@ -247,7 +253,7 @@ export function BuyPanel({
                   ))}
                 </div>
               </div>
-              <div className="relative mt-2 h-9">
+              <div className="relative mx-2 mt-2 h-9">
                 {quote.tiers.map((tier) => {
                   const pct = qtyToPct(tier.qty);
                   return (
@@ -374,7 +380,8 @@ export function BuyPanel({
             </motion.div>
           </motion.div>
         )}
-      </AnimatePresence>
+        </AnimatePresence>
+      </div>
     </div>
   );
 }
