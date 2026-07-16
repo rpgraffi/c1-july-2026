@@ -76,7 +76,7 @@ export function Experience({
   dragging: boolean;
   isMobile: boolean;
 }) {
-  const magicDust = phase === "materialize" || phase === "explode";
+  const magicDust = phase === "materialize" || phase === "explode" || phase === "scan";
   const settled = phase === "present" || phase === "confirmed";
 
   return (

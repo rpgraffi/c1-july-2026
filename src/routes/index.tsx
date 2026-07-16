@@ -3,7 +3,7 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react"
 import { AnimatePresence, motion } from "framer-motion";
 import { BuyPanel } from "@/components/BuyPanel";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { animTimeScale, LIGHT_PHASES, SPLIT_PHASES, type Phase } from "@/lib/phases";
+import { animTimeScale, LIGHT_PHASES, SCAN_SWEEP_S, SPLIT_PHASES, type Phase } from "@/lib/phases";
 import { loadModelFromFiles, loadSampleModel, type LoadedModel } from "@/lib/step-loader";
 
 const Experience = lazy(() =>
@@ -31,7 +31,8 @@ export const Route = createFileRoute("/")({
 
 const CONSUME_MIN_MS = 1100;
 const MATERIALIZE_MS = 2500;
-const EXPLODE_MS = 1700;
+const EXPLODE_MS = 1400;
+const SCAN_MS = SCAN_SWEEP_S * 1000 + 200;
 const ASSEMBLE_MS = 1450;
 
 const CONSUME_STATUS = [
@@ -46,6 +47,10 @@ const BG_BY_PHASE: Record<Phase, string> = {
   consume: "#04040a",
   materialize: "#070812",
   explode: "#0a0b17",
+  // during scan the base stays dark — the beam-synced wipe overlay paints the
+  // light color behind the line; assemble then snaps the base to light (the
+  // wipe already covers the whole screen at that point, so nothing visibly changes)
+  scan: "#0a0b17",
   assemble: "#f1f2f4",
   present: "#f1f2f4",
   confirmed: "#f1f2f4",
@@ -95,9 +100,36 @@ function Index() {
 
   const isMobile = useIsMobile();
   const inputRef = useRef<HTMLInputElement>(null);
+  const wipeRef = useRef<HTMLDivElement>(null);
   const timers = useRef<number[]>([]);
   const phaseRef = useRef(phase);
   phaseRef.current = phase;
+
+  // Backdrop wipe, synced to the 3D x-ray beam: identical eased progress and
+  // amplitude (±52% ≈ the beam's ±1.04 × half-width), light strictly trailing
+  // the line. Only while the beam fades out at the very end does the wipe push
+  // a few extra percent to close out the right screen edge.
+  useEffect(() => {
+    if (phase !== "scan") return;
+    const durMs = SCAN_SWEEP_S * 1000 * animTimeScale();
+    const started = performance.now();
+    const ease = (v: number) => {
+      const c = Math.min(1, Math.max(0, v));
+      return c * c * (3 - 2 * c);
+    };
+    let raf = 0;
+    const tick = () => {
+      const p = Math.min(1, (performance.now() - started) / durMs);
+      const closeout = 8 * ease((p - 0.92) / 0.08);
+      const edge = 50 + (2 * ease(p) - 1) * 52 + closeout;
+      if (wipeRef.current) {
+        wipeRef.current.style.background = `linear-gradient(90deg, #f1f2f4 0%, #f1f2f4 ${edge - 6}%, rgba(241,242,244,0) ${edge + 1}%)`;
+      }
+      if (p < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [phase]);
 
   useEffect(() => setMounted(true), []);
   useEffect(() => () => timers.current.forEach((t) => window.clearTimeout(t)), []);
@@ -121,8 +153,12 @@ function Index() {
         setModel(loaded);
         setPhase("materialize");
         schedule(() => setPhase("explode"), MATERIALIZE_MS * scale);
-        schedule(() => setPhase("assemble"), (MATERIALIZE_MS + EXPLODE_MS) * scale);
-        schedule(() => setPhase("present"), (MATERIALIZE_MS + EXPLODE_MS + ASSEMBLE_MS) * scale);
+        schedule(() => setPhase("scan"), (MATERIALIZE_MS + EXPLODE_MS) * scale);
+        schedule(() => setPhase("assemble"), (MATERIALIZE_MS + EXPLODE_MS + SCAN_MS) * scale);
+        schedule(
+          () => setPhase("present"),
+          (MATERIALIZE_MS + EXPLODE_MS + SCAN_MS + ASSEMBLE_MS) * scale,
+        );
       }, wait);
     },
     [schedule],
@@ -180,13 +216,17 @@ function Index() {
         if (files.length > 0) void ingest(files);
       }}
     >
-      {/* phase-driven backdrop: void black → deep space → one simple light color */}
+      {/* phase-driven backdrop: void black → deep space → one simple light color.
+          The assemble flip is instant because the scan wipe already painted it. */}
       <motion.div
         className="absolute inset-0"
         initial={false}
         animate={{ backgroundColor: BG_BY_PHASE[phase] }}
-        transition={{ duration: 1.3, ease: "easeInOut" }}
+        transition={{ duration: phase === "assemble" ? 0 : 1.3, ease: "easeInOut" }}
       />
+
+      {/* scan wipe: the light backdrop sweeps in behind the x-ray beam */}
+      {phase === "scan" && <div ref={wipeRef} className="absolute inset-0" />}
 
       {/* the canvas stays fullscreen forever — the model itself glides aside */}
       <div className="absolute inset-0">
