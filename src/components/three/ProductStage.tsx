@@ -60,9 +60,10 @@ export function ProductStage({ parts, phase }: { parts: LoadedPart[]; phase: Pha
           side: THREE.DoubleSide, // face fragments are open shells
         });
         // X-ray scan: inject a world-x sweep into the standard shading.
-        // Behind the beam (x < uScanX) the metal turns into a fresnel-edged
-        // see-through ghost; right at the line a hot slice band glows where
-        // the beam cuts the surfaces.
+        // Behind the beam (x < uScanX) the metal vanishes and the wireframe
+        // overlay (below, same sweep) becomes the scanned look; right at the
+        // line a hot slice band glows where the beam cuts the surfaces. Models
+        // too heavy for wire overlays fall back to a see-through ghost.
         mat.onBeforeCompile = (shader) => {
           shader.uniforms.uScanX = scanUniforms.uScanX;
           shader.uniforms.uXray = scanUniforms.uXray;
@@ -84,11 +85,19 @@ export function ProductStage({ parts, phase }: { parts: LoadedPart[]; phase: Pha
                 float scanned = (1.0 - smoothstep(-0.18, 0.05, vScanWorld.x - uScanX)) * uXray;
                 float beamBand = exp(-pow((vScanWorld.x - uScanX) * 10.0, 2.0)) * uXray;
                 float fres = pow(1.0 - saturate(dot(normalize(normal), normalize(vViewPosition))), 1.4);
-                // ghost: tinted-glass interior with dark steel-blue fresnel
-                // edges — needs real contrast against the light backdrop
+                ${
+                  showOverlays
+                    ? /* glsl */ `
+                // scanned: the metal is gone — the wireframe carries the look;
+                // only a whisper of fresnel volume remains
+                diffuseColor.a = mix(diffuseColor.a, 0.06 * fres, scanned);`
+                    : /* glsl */ `
+                // ghost fallback: tinted-glass interior with dark steel-blue
+                // fresnel edges
                 vec3 ghostCol = mix(vec3(0.68, 0.76, 0.88), vec3(0.13, 0.25, 0.47), fres);
                 outgoingLight = mix(outgoingLight, ghostCol, scanned);
-                diffuseColor.a = mix(diffuseColor.a, 0.16 + 0.72 * fres, scanned);
+                diffuseColor.a = mix(diffuseColor.a, 0.16 + 0.72 * fres, scanned);`
+                }
                 // hot orange slice where the beam cuts the surfaces
                 outgoingLight = mix(outgoingLight, vec3(1.0, 0.42, 0.10), min(1.0, beamBand * (0.9 + 0.9 * fres)));
                 diffuseColor.a = max(diffuseColor.a, min(1.0, beamBand * 1.6) * uXray);
@@ -98,40 +107,47 @@ export function ProductStage({ parts, phase }: { parts: LoadedPart[]; phase: Pha
         };
         return mat;
       }),
-    [parts, scanUniforms],
+    [parts, scanUniforms, showOverlays],
   );
 
+  // The scanned look: a dark blueprint wireframe that only exists behind the
+  // x-ray line — the same uScanX/uXray sweep as the solid, injected the same
+  // way. Dark + normal blending because the backdrop behind the beam is the
+  // light wipe; additive light-blue lines would wash out exactly where they show.
   const wireMaterials = useMemo(
     () =>
-      parts.map(
-        () =>
-          new THREE.MeshBasicMaterial({
-            color: new THREE.Color("#9ec5ff"),
-            wireframe: true,
-            transparent: true,
-            opacity: 0,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-          }),
-      ),
-    [parts],
-  );
-
-  const pointMaterials = useMemo(
-    () =>
-      parts.map(
-        () =>
-          new THREE.PointsMaterial({
-            color: new THREE.Color("#ffc9a3"),
-            size: 0.05,
-            sizeAttenuation: true,
-            transparent: true,
-            opacity: 0,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-          }),
-      ),
-    [parts],
+      parts.map(() => {
+        const mat = new THREE.MeshBasicMaterial({
+          color: new THREE.Color("#24446e"),
+          wireframe: true,
+          transparent: true,
+          opacity: 0.85,
+          depthWrite: false,
+        });
+        mat.onBeforeCompile = (shader) => {
+          shader.uniforms.uScanX = scanUniforms.uScanX;
+          shader.uniforms.uXray = scanUniforms.uXray;
+          shader.vertexShader = shader.vertexShader
+            .replace("#include <common>", "#include <common>\nvarying vec3 vScanWorld;")
+            .replace(
+              "#include <begin_vertex>",
+              "#include <begin_vertex>\nvScanWorld = (modelMatrix * vec4( position, 1.0 )).xyz;",
+            );
+          shader.fragmentShader = shader.fragmentShader
+            .replace(
+              "#include <common>",
+              "#include <common>\nvarying vec3 vScanWorld;\nuniform float uScanX;\nuniform float uXray;",
+            )
+            .replace(
+              "#include <opaque_fragment>",
+              /* glsl */ `
+              diffuseColor.a *= (1.0 - smoothstep(-0.18, 0.05, vScanWorld.x - uScanX)) * uXray;
+              #include <opaque_fragment>`,
+            );
+        };
+        return mat;
+      }),
+    [parts, scanUniforms],
   );
 
   // The visible scan line: a quad with a pre-baked gradient texture (hot core,
@@ -178,10 +194,9 @@ export function ProductStage({ parts, phase }: { parts: LoadedPart[]; phase: Pha
     return () => {
       solidMaterials.forEach((m) => m.dispose());
       wireMaterials.forEach((m) => m.dispose());
-      pointMaterials.forEach((m) => m.dispose());
       beamTexture.dispose();
     };
-  }, [solidMaterials, wireMaterials, pointMaterials, beamTexture]);
+  }, [solidMaterials, wireMaterials, beamTexture]);
 
   useFrame((state, dt) => {
     const g = group.current;
@@ -210,11 +225,7 @@ export function ProductStage({ parts, phase }: { parts: LoadedPart[]; phase: Pha
       let anyVisible = false;
       for (let i = 0; i < parts.length; i++) {
         const solid = solidMaterials[i];
-        const wire = wireMaterials[i];
-        const points = pointMaterials[i];
         solid.opacity = Math.max(0, solid.opacity - dt * 3.2);
-        wire.opacity = Math.max(0, wire.opacity - dt * 3.2);
-        points.opacity = Math.max(0, points.opacity - dt * 3.2);
         if (solid.opacity > 0.01) anyVisible = true;
       }
       const s = Math.max(0.35, g.scale.x - dt * 1.1);
@@ -293,8 +304,6 @@ export function ProductStage({ parts, phase }: { parts: LoadedPart[]; phase: Pha
       if (!holder) continue;
       const part = parts[i];
       const solid = solidMaterials[i];
-      const wire = wireMaterials[i];
-      const points = pointMaterials[i];
 
       const dist = explode * splitScale * (0.85 + jitter(i) * 0.6);
       holder.position.set(part.dir.x * dist, part.dir.y * dist, part.dir.z * dist);
@@ -305,16 +314,11 @@ export function ProductStage({ parts, phase }: { parts: LoadedPart[]; phase: Pha
       );
 
       if (phase === "materialize") {
-        // vertices spark in → wireframe traces the topology → surfaces solidify
-        const local = clamp01((pt - i * stagger) / 1.6);
-        points.opacity = smooth(local / 0.16) * (1 - smooth((local - 0.4) / 0.3));
-        points.size = 0.065 - 0.04 * smooth(local / 0.5);
-        wire.opacity = smooth((local - 0.1) / 0.28) * (1 - smooth((local - 0.62) / 0.32)) * 0.9;
-        solid.opacity = smooth((local - 0.42) / 0.4);
+        // parts simply fade in, staggered — the wireframe belongs to the scan now
+        const local = clamp01((pt - i * stagger) / 1.2);
+        solid.opacity = smooth(local);
         holder.scale.setScalar(0.94 + 0.06 * easeOutCubic(clamp01(local * 1.25)));
       } else {
-        points.opacity = Math.max(0, points.opacity - dt * 3);
-        wire.opacity = Math.max(0, wire.opacity - dt * 2.5);
         solid.opacity = Math.min(1, solid.opacity + dt * 2.5);
         holder.scale.setScalar(1);
       }
@@ -336,10 +340,12 @@ export function ProductStage({ parts, phase }: { parts: LoadedPart[]; phase: Pha
           >
             <mesh geometry={part.geometry} material={solidMaterials[i]} />
             {showOverlays && (
-              <>
-                <mesh geometry={part.geometry} material={wireMaterials[i]} scale={1.002} />
-                <points geometry={part.geometry} material={pointMaterials[i]} />
-              </>
+              <mesh
+                geometry={part.geometry}
+                material={wireMaterials[i]}
+                scale={1.002}
+                renderOrder={2}
+              />
             )}
           </group>
         ))}

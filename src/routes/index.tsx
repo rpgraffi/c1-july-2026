@@ -3,7 +3,14 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react"
 import { AnimatePresence, motion } from "framer-motion";
 import { BuyPanel } from "@/components/BuyPanel";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { animTimeScale, LIGHT_PHASES, SCAN_SWEEP_S, SPLIT_PHASES, type Phase } from "@/lib/phases";
+import {
+  animTimeScale,
+  LIGHT_PHASES,
+  SCAN_SWEEP_S,
+  SPLIT_PHASES,
+  WORDMARK_APPEAR_DELAY_S,
+  type Phase,
+} from "@/lib/phases";
 import { loadModelFromFiles, loadSampleModel, type LoadedModel } from "@/lib/step-loader";
 
 const Experience = lazy(() =>
@@ -29,7 +36,9 @@ export const Route = createFileRoute("/")({
   component: Index,
 });
 
-const CONSUME_MIN_MS = 1100;
+// leaves room for the slower beam-up (INTRO_BEAM_S) + pulse + enough of the
+// logo's corner flight that the part doesn't materialize underneath it
+const CONSUME_MIN_MS = 2600;
 const MATERIALIZE_MS = 2500;
 const EXPLODE_MS = 1400;
 const SCAN_MS = SCAN_SWEEP_S * 1000 + 200;
@@ -237,8 +246,19 @@ function Index() {
         )}
       </div>
 
-      {/* wordmark */}
-      <div className="pointer-events-none absolute left-7 top-6 z-20 flex items-center gap-2">
+      {/* wordmark — hidden while the logo-satellite is the hero; fades in right
+          as the 3D logo docks into this exact spot (TactoSatellite targets the
+          icon's 40px/36px center) */}
+      <motion.div
+        className="pointer-events-none absolute left-7 top-6 z-20 flex items-center gap-2"
+        initial={false}
+        animate={{ opacity: phase === "idle" ? 0 : 1 }}
+        transition={
+          phase === "idle"
+            ? { duration: 0.3 }
+            : { duration: 0.35, delay: WORDMARK_APPEAR_DELAY_S * animTimeScale() }
+        }
+      >
         <img src="/tacto-star.svg" alt="" className="h-6 w-6 object-contain" />
         {/* Official tacto wordmark, as vector paths lifted from the main app's
             TactoIconWithCaption. fill=currentColor lets the phase color animation
@@ -260,7 +280,7 @@ function Index() {
           <path d="M99.3332 27.3035V17.3132H96.2898V14.8321H99.3332V10.1016H102.046V14.8321H106.412V17.3132H102.046V27.2705C102.046 28.6929 102.542 29.2222 103.998 29.2222H106.677V31.7033H103.733C100.491 31.7033 99.3332 30.2808 99.3332 27.3035Z" />
           <path d="M116.051 31.9018C111.122 31.9018 107.681 28.3952 107.681 23.2677C107.681 18.1402 111.122 14.6336 116.051 14.6336C120.98 14.6336 124.42 18.1402 124.42 23.2677C124.42 28.3952 120.98 31.9018 116.051 31.9018ZM116.051 29.4869C119.392 29.4869 121.642 26.8735 121.642 23.2677C121.642 19.6619 119.392 17.0485 116.051 17.0485C112.71 17.0485 110.46 19.6619 110.46 23.2677C110.46 26.8735 112.71 29.4869 116.051 29.4869Z" />
         </motion.svg>
-      </div>
+      </motion.div>
 
       {/* idle overlay: the invitation */}
       <AnimatePresence>
@@ -271,8 +291,9 @@ function Index() {
             className="absolute inset-0 z-10 cursor-pointer"
             onClick={() => inputRef.current?.click()}
           >
+            {/* shifted below center — the logo-satellite owns the upper half */}
             <div className="pointer-events-none absolute inset-0 grid place-items-center">
-              <div className="relative px-6 text-center">
+              <div className="relative translate-y-[15vh] px-6 text-center">
                 <motion.h1
                   initial={{ opacity: 0, y: 18 }}
                   animate={{
