@@ -16,10 +16,10 @@ import { animTimeScale, INTRO_BEAM_S, type Phase } from "@/lib/phases";
 // no fetch, no suspense boundary needed
 const TACTO_STAR_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 162 162"><path d="M80.9894 0C81.8147 -3.60707e-08 82.4838 0.668647 82.4839 1.49381V40.0757C82.4839 61.8492 100.135 79.5001 121.908 79.5001H160.5C161.326 79.5003 161.994 80.1694 161.994 80.9945C161.994 81.8196 161.326 82.4882 160.5 82.4884H121.908C100.135 82.4884 82.4839 100.139 82.4839 121.913V160.506C82.4839 161.331 81.8147 162 80.9894 162C80.1642 162 79.495 161.331 79.495 160.506V121.913C79.495 100.139 61.8441 82.4884 40.0706 82.4884H1.48872C0.663505 82.4884 -0.00561811 81.8197 -0.0057373 80.9945C-0.0057373 80.1693 0.663431 79.5001 1.48872 79.5001H40.0706C61.8441 79.5001 79.495 61.8492 79.495 40.0757V1.49381C79.4951 0.668692 80.1643 7.20679e-05 80.9894 0Z" fill="#FF6414"/></svg>`;
 
-/** must match the Experience camera's y — screen center sits at this world y */
-const CAM_Y = 0.35;
-/** where the big logo hovers while idle (upper-middle, like the sketch) */
-const IDLE_Y = 1.15;
+/** where the big logo hovers while idle (upper-middle, like the sketch).
+    R3F's default camera looks AT the origin, so even with the camera raised to
+    y=0.35 the screen center sits at world y≈0 on the z=0 plane — no offset. */
+const IDLE_Y = 0.85;
 /** the beam's horizon anchor — just below the viewport, over the Earth */
 const BEAM_START = new THREE.Vector2(-1.5, -2.35);
 /** the DOM corner icon: left-7 top-6 + h-6 w-6 → center (40px, 36px), 24px tall */
@@ -194,7 +194,7 @@ export function TactoSatellite({ phase, dragging }: { phase: Phase; dragging: bo
 
     const wpp = viewport.height / size.height; // world units per CSS pixel
     const dockX = -viewport.width / 2 + DOCK_PX.x * wpp;
-    const dockY = CAM_Y + viewport.height / 2 - DOCK_PX.y * wpp;
+    const dockY = viewport.height / 2 - DOCK_PX.y * wpp;
     const dockScale = DOCK_PX.size * wpp;
     const bigScale = Math.min(2.1, viewport.width * 0.62); // fits on mobile too
 
