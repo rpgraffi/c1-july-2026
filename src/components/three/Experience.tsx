@@ -4,7 +4,7 @@ import { ContactShadows, Sparkles } from "@react-three/drei";
 import { useEffect, useRef, type ReactNode } from "react";
 import * as THREE from "three";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
-import { BlackHole } from "./BlackHole";
+import { SpaceScene } from "./SpaceScene";
 import { ProductStage } from "./ProductStage";
 import type { LoadedModel } from "@/lib/step-loader";
 import type { Phase } from "@/lib/phases";
@@ -94,7 +94,7 @@ export function Experience({
       <directionalLight position={[3, 5, 4]} intensity={1.5} />
       <directionalLight position={[-4, 2, -3]} intensity={0.8} color="#8b7cf6" />
 
-      <BlackHole phase={phase} dragging={dragging} />
+      <SpaceScene phase={phase} dragging={dragging} />
 
       <Rig split={settled} mobile={isMobile}>
         {model && (

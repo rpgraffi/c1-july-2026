@@ -8,6 +8,16 @@ export const LIGHT_PHASES: Phase[] = ["scan", "assemble", "present", "confirmed"
 export const SCAN_SWEEP_S = 2.8;
 export const SPLIT_PHASES: Phase[] = ["present", "confirmed"];
 
+/** intro beam-up: seconds (before `?slow`) the light streak takes to climb from
+    the horizon to the logo-satellite. CONSUME_MIN_MS (index) must leave room for
+    beam + pulse + some flight, or the part materializes under the big logo. */
+export const INTRO_BEAM_S = 1.7;
+
+/** when the DOM corner wordmark may fade in after consume starts: beam + pulse +
+    most of the logo's flight to the corner. Shared by TactoSatellite (3D side of
+    the handoff) and index (DOM side) so the crossfade lines up. */
+export const WORDMARK_APPEAR_DELAY_S = 3.4;
+
 /** `?slow=N` stretches the whole choreography — handy for demos and debugging */
 export function animTimeScale(): number {
   if (typeof window === "undefined") return 1;
