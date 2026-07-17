@@ -25,6 +25,8 @@ const BEAM_START = new THREE.Vector2(-1.5, -2.35);
 /** the DOM corner icon: left-7 top-6 + h-6 w-6 → center (40px, 36px), 24px tall */
 const DOCK_PX = { x: 40, y: 36, size: 24 };
 const POP_S = 0.18;
+/** corner-flight duration, seconds (before `?slow`) */
+const FLIGHT_S = 1.0;
 
 const beamVertex = /* glsl */ `
   varying vec2 vUv;
@@ -68,6 +70,8 @@ export function TactoSatellite({ phase, dragging }: { phase: Phase; dragging: bo
   const size = useThree((s) => s.size);
   const pointer = useRef({ x: 0, y: 0 });
   const consumeStart = useRef<number | null>(null);
+  const flightStart = useRef<number | null>(null);
+  const flightFrom = useRef({ x: 0, y: 0, s: 1 });
   const ts = useMemo(() => animTimeScale(), []);
 
   const geometry = useMemo(() => {
@@ -198,24 +202,36 @@ export function TactoSatellite({ phase, dragging }: { phase: Phase; dragging: bo
     const dockScale = DOCK_PX.size * wpp;
     const bigScale = Math.min(2.1, viewport.width * 0.62); // fits on mobile too
 
-    // λ=2 → the glide to the corner takes ~1.6s to visually arrive
-    const flightSpeed = 2 / ts;
-    const posSpeed = flying ? flightSpeed : 3;
-    const tx = flying ? dockX : 0;
-    const ty = flying ? dockY : IDLE_Y + Math.sin(t * 0.55) * 0.06;
-    g.position.x = THREE.MathUtils.damp(g.position.x, tx, posSpeed, dt);
-    g.position.y = THREE.MathUtils.damp(g.position.y, ty, posSpeed, dt);
-
-    // scale: big float (+drag swell, +beam-impact pop) → 24px corner icon
-    let targetScale = flying ? dockScale : bigScale * (dragging ? 1.07 : 1);
-    if (!flying && sinceConsume > INTRO_BEAM_S * ts) {
-      targetScale += bigScale * 0.26 * Math.exp((-(sinceConsume - INTRO_BEAM_S * ts) * 9) / ts);
+    // The flight is a timed tween (easeOutQuad), not a damp — an exponential
+    // tail makes the landing crawl. This launches hard off the pulse and lands
+    // firmly at the corner in FLIGHT_S.
+    if (flying && flightStart.current === null) {
+      flightStart.current = t;
+      flightFrom.current = { x: g.position.x, y: g.position.y, s: g.scale.x };
     }
-    g.scale.setScalar(THREE.MathUtils.damp(g.scale.x, targetScale, flying ? flightSpeed : 6, dt));
+    if (!flying) flightStart.current = null;
+
+    if (flying && flightStart.current !== null) {
+      const p = Math.min(1, (t - flightStart.current) / (FLIGHT_S * ts));
+      const e = 1 - (1 - p) * (1 - p);
+      const from = flightFrom.current;
+      g.position.x = from.x + (dockX - from.x) * e;
+      g.position.y = from.y + (dockY - from.y) * e;
+      g.scale.setScalar(from.s + (dockScale - from.s) * e);
+    } else {
+      // idle hover (and the consume hold): bob + drag swell + beam-impact pop
+      g.position.x = THREE.MathUtils.damp(g.position.x, 0, 3, dt);
+      g.position.y = THREE.MathUtils.damp(g.position.y, IDLE_Y + Math.sin(t * 0.55) * 0.06, 3, dt);
+      let targetScale = bigScale * (dragging ? 1.07 : 1);
+      if (sinceConsume > INTRO_BEAM_S * ts) {
+        targetScale += bigScale * 0.26 * Math.exp((-(sinceConsume - INTRO_BEAM_S * ts) * 9) / ts);
+      }
+      g.scale.setScalar(THREE.MathUtils.damp(g.scale.x, targetScale, 6, dt));
+    }
 
     // zero-g wobble while idle; settle flat so the corner handoff matches the
     // flat DOM icon
-    const rotSpeed = flying ? flightSpeed : 2.5;
+    const rotSpeed = flying ? 6 / ts : 2.5; // settle flat early in the flight
     const rx = flying ? 0 : Math.sin(t * 0.42) * 0.15 + pointer.current.y * 0.1;
     const ry = flying ? 0 : Math.sin(t * 0.31) * 0.3 + pointer.current.x * 0.22;
     const rz = flying ? 0 : Math.sin(t * 0.19) * 0.07;

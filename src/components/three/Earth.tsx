@@ -80,24 +80,40 @@ const surfaceFragment = /* glsl */ `
       fbm(vDir * 4.0 + vec3(1.7, 9.2, 3.5))
     );
     float continents = fbm(vDir * 5.5 + q * 1.1);
-    float land = smoothstep(0.47, 0.53, continents);
+    float land = smoothstep(0.485, 0.52, continents);
 
     float macro = fbm(vDir * 9.0);
-    float detail = fbm(vDir * 22.0);
+    float detail = fbm(vDir * 26.0);
+    float micro = fbm(vDir * 60.0); // fine terrain / wave grain
+
     vec3 ocean = mix(vec3(0.018, 0.075, 0.21), vec3(0.035, 0.125, 0.30), macro);
+    ocean *= 0.95 + 0.10 * micro; // open water isn't flat
+
+    // lowlands → highlands → rocky ridges → snow on the highest terrain,
+    // with micro-noise relief so land reads as topography, not flat fill
+    vec3 landC = mix(vec3(0.15, 0.41, 0.26), vec3(0.28, 0.36, 0.21), smoothstep(0.35, 0.75, detail));
+    float relief = detail * 0.65 + micro * 0.35;
+    landC = mix(landC, vec3(0.40, 0.40, 0.36), smoothstep(0.60, 0.76, relief));
+    landC = mix(landC, vec3(0.85, 0.88, 0.92), smoothstep(0.78, 0.90, relief));
+    landC *= 0.84 + 0.32 * micro;
+
     vec3 shore = vec3(0.10, 0.36, 0.37);
-    vec3 inland = mix(vec3(0.15, 0.41, 0.26), vec3(0.28, 0.36, 0.21), smoothstep(0.3, 0.8, detail));
-    vec3 surf = mix(ocean, mix(shore, inland, smoothstep(0.50, 0.62, continents)), land);
+    vec3 surf = mix(ocean, mix(shore, landC, smoothstep(0.52, 0.60, continents)), land);
 
-    // bright shallow-water shelf hugging the coastlines
-    float shelf = smoothstep(0.40, 0.47, continents) * (1.0 - land);
+    // bright shallow-water shelf hugging the coastlines + a crisp foam line
+    float shelf = smoothstep(0.42, 0.485, continents) * (1.0 - land);
     surf = mix(surf, vec3(0.05, 0.27, 0.38), shelf * 0.55);
+    float foam = smoothstep(0.481, 0.488, continents) * (1.0 - smoothstep(0.490, 0.495, continents));
+    surf = mix(surf, vec3(0.55, 0.75, 0.80), foam * 0.4);
 
-    // two cloud layers drifting independently: big systems + fine wisps
+    // three cloud layers drifting independently: big systems + wisps + curls,
+    // with the finest layer also eroding the rims so edges stay feathery
     float cloudBase = fbm(vDir * 8.0 + vec3(uTime * 0.012, 0.0, uTime * 0.004));
     float wisps = fbm(vDir * 21.0 + vec3(-uTime * 0.006, uTime * 0.009, 0.0));
-    float clouds = smoothstep(0.52, 0.80, cloudBase * 0.72 + wisps * 0.38);
-    surf = mix(surf, vec3(0.80, 0.85, 0.94), clouds * 0.65);
+    float curls = fbm(vDir * 48.0 + vec3(uTime * 0.004, -uTime * 0.006, 0.0));
+    float clouds = smoothstep(0.40, 0.72, cloudBase * 0.62 + wisps * 0.30 + curls * 0.18);
+    clouds *= 0.75 + 0.35 * curls;
+    surf = mix(surf, vec3(0.80, 0.85, 0.94), min(1.0, clouds) * 0.74);
 
     vec3 lightDir = normalize(vec3(0.35, 0.8, 0.5));
     float ndl = clamp(dot(vNormalW, lightDir), 0.0, 1.0);
@@ -210,11 +226,13 @@ export function Earth({ phase }: { phase: Phase }) {
 
   return (
     <group position={CENTER}>
+      {/* only a ~55° arc of the sphere is on screen, so the segment counts
+          need to be this high for a perfectly round limb */}
       <mesh ref={mesh} material={surface}>
-        <sphereGeometry args={[RADIUS, 192, 192]} />
+        <sphereGeometry args={[RADIUS, 384, 192]} />
       </mesh>
       <mesh material={atmosphere} scale={1.045}>
-        <sphereGeometry args={[RADIUS, 96, 96]} />
+        <sphereGeometry args={[RADIUS, 192, 96]} />
       </mesh>
     </group>
   );

@@ -16,7 +16,7 @@ export const INTRO_BEAM_S = 1.7;
 /** when the DOM corner wordmark may fade in after consume starts: beam + pulse +
     most of the logo's flight to the corner. Shared by TactoSatellite (3D side of
     the handoff) and index (DOM side) so the crossfade lines up. */
-export const WORDMARK_APPEAR_DELAY_S = 3.4;
+export const WORDMARK_APPEAR_DELAY_S = 2.7;
 
 /** `?slow=N` stretches the whole choreography — handy for demos and debugging */
 export function animTimeScale(): number {
